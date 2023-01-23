@@ -3,10 +3,10 @@
 项目中集成了三种权限处理方式：
 
 1. 通过用户角色来过滤菜单(前端方式控制)，菜单和路由分开配置
-2. 通过用户角色来过滤菜单(前端方式控制)，菜单由路由配置自动生成
+2. 通过用户角色来过滤菜单(前端方式控制)，菜单由路由配置自动生成（项目默认使用该配置）
 3. 通过后台来动态生成路由表(后台方式控制)
 
-## 前端角色权限
+## 前端角色权限（菜单路由分开配置）
 
 **实现原理:** 在前端固定写死路由的权限，指定路由有哪些权限可以查看。只初始化通用的路由，需要权限才能访问的路由没有被加入路由表内。在登陆后或者其他方式获取用户角色后，通过角色去遍历路由表，获取该角色可以访问的路由表，生成路由表，再通过 `router.addRoutes` 添加到路由实例，实现权限的过滤。
 
@@ -77,8 +77,55 @@ const permission: AppRouteModule = {
 
 export default permission;
 ```
+3. 在`src/router/menus`下新建`modules`目录。在该目录下添加菜单文件。无需引入。会自动导入modules下所有的ts文件
+```ts
+import type { MenuModule } from '/@/router/types';
+import { t } from '/@/hooks/web/useI18n';
+const menu: MenuModule = {
+  orderNo: 10,
+  menu: {
+    name: t('routes.demo.permission.front'),
+    path: '/permission',
 
-3. 在路由钩子内动态判断
+    children: [
+      {
+        path: 'auth-pageA',
+        name: t('routes.demo.permission.frontTestA'),
+      },
+      {
+        path: 'auth-pageB',
+        name: t('routes.demo.permission.frontTestB'),
+      },
+    ],
+  },
+};
+export default menu;
+
+```
+详细代码见`src/router/menus/index.ts`,下面展示主要代码
+```ts
+// 此处自动引入所有的modules，然后遍历
+const modules = import.meta.globEager('./modules/**/*.ts');
+
+const menuModules: MenuModule[] = [];
+Object.keys(modules).forEach((key) => {
+  const mod = modules[key].default || {};
+  const modList = Array.isArray(mod) ? [...mod] : [mod];
+  menuModules.push(...modList);
+});
+
+// 获取菜单，如果是ROLE模式则过滤
+export const getMenus = async (): Promise<Menu[]> => {
+  const menus = await getAsyncMenus();
+  if (isRoleMode()) {
+    const routes = router.getRoutes();
+    return filter(menus, basicFilter(routes));
+  }
+  return menus;
+};
+```
+
+4. 在路由钩子内动态判断
 
 详细代码见 [src/router/guard/permissionGuard.ts](https://github.com/vbenjs/vue-vben-admin/tree/main/src/router/guard/permissionGuard.ts)
 
@@ -174,6 +221,18 @@ export default defineComponent({
 
 ```html
 <a-button v-auth="RoleEnum.SUPER" type="primary" class="mx-4"> 拥有super角色权限可见</a-button>
+```
+## 前端角色权限（菜单由路由生成）
+
+项目默认使用该模式，与上面ROLE模式类似，只不过菜单不用单独配置。详细代码见`src/store/modules/permission.ts`.
+下面为主要代码
+```ts
+        // 路由映射， 默认进入该模式
+        case PermissionModeEnum.ROUTE_MAPPING:
+          ......
+          // 将路由转换成菜单
+          const menuList = transformRouteToMenu(routes, true);
+          ......
 ```
 
 ## 后台动态获取
